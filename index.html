@@ -378,9 +378,14 @@ function colorLabel(h){return COLOR_NAME[h.toUpperCase()]||"Eigene Farbe"}
 function mulberry(seed){let a=seed>>>0;return function(){a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296}}
 
 /* ---------- Nagel zeichnen ---------- */
-function nailPath(w,L,shape){
-  const h=w/2,b=.36*w,p=new Path2D();L=Math.max(L,b+.35*w);
-  p.moveTo(-h,-b);p.bezierCurveTo(-h,b/3,h,b/3,h,-b);
+/* c (optional): gemessene Kurve der Nagelhaut, 9 Höhen quer über den Nagel in Nagelbreiten (0 = Mitte unten) */
+function nailPath(w,L,shape,c){
+  const h=w/2,p=new Path2D();let b=.36*w;
+  if(c&&c.length===9){b=Math.max(c[0],c[8],.05)*w;p.moveTo(-h,-c[0]*w);
+    for(let i=1;i<8;i++){const x=-h+i*w/8,y=-c[i]*w,xn=-h+(i+1)*w/8,yn=-c[i+1]*w;p.quadraticCurveTo(x,y,(x+xn)/2,(y+yn)/2)}
+    p.lineTo(h,-c[8]*w)}
+  else{p.moveTo(-h,-b);p.bezierCurveTo(-h,b/3,h,b/3,h,-b)}
+  L=Math.max(L,b+.35*w);
   const corner=r=>{p.lineTo(h,-L+r);p.quadraticCurveTo(h,-L,h-r,-L);p.lineTo(-h+r,-L);p.quadraticCurveTo(-h,-L,-h,-L+r)};
   const dome=(t,k)=>{p.lineTo(h,-L+t);p.bezierCurveTo(h,-L+t*.45,h*k,-L,0,-L);p.bezierCurveTo(-h*k,-L,-h,-L+t*.45,-h,-L+t)};
   switch(shape){
@@ -434,7 +439,7 @@ function paintPattern(c,w,L,d,R){
   }
 }
 function soft(c,cx,cy,rx,ry,rot,col,a){c.save();c.translate(cx,cy);c.rotate(rot);c.scale(rx,ry);const g=c.createRadialGradient(0,0,0,0,0,1);g.addColorStop(0,rgba(col,a));g.addColorStop(.5,rgba(col,a*.55));g.addColorStop(1,rgba(col,0));c.fillStyle=g;c.fillRect(-1,-1,2,2);c.restore()}
-function paintFinish(c,w,L,d,R){
+function paintFinish(c,w,L,d,R,flat3d){
   const h=w/2,top=-L,bot=.16*w,box=()=>c.fillRect(-h-2,top-2,w+4,L+bot+4);
   if(d.finish==="chrome"){c.save();c.globalCompositeOperation="overlay";const g=c.createLinearGradient(-h,top,h*.9,0);[[0,"rgba(255,255,255,.85)"],[.2,"rgba(20,20,30,.5)"],[.38,"rgba(255,255,255,.9)"],[.55,"rgba(30,30,40,.45)"],[.75,"rgba(255,255,255,.75)"],[1,"rgba(10,10,20,.55)"]].forEach(s=>g.addColorStop(s[0],s[1]));c.fillStyle=g;box();c.restore();
     const g2=c.createLinearGradient(-h,0,h,0);g2.addColorStop(.18,"rgba(255,255,255,0)");g2.addColorStop(.3,"rgba(255,255,255,.55)");g2.addColorStop(.4,"rgba(255,255,255,0)");c.fillStyle=g2;box()}
@@ -444,16 +449,77 @@ function paintFinish(c,w,L,d,R){
   if(d.finish==="glitter"){const n=Math.round(190*L/w);for(let i=0;i<n;i++){const x=(R()-.5)*w,y=top+R()*(L+bot),s=w*(.012+R()*.03),k=R();c.fillStyle=k<.5?rgba("#FFFFFF",.5+R()*.5):k<.8?rgba("#F6E2B0",.5+R()*.5):rgba(d.color2,.7);
       c.save();c.translate(x,y);c.rotate(R()*3);c.fillRect(-s/2,-s/2,s,s);c.restore()}}
   if(d.finish==="matte"){c.fillStyle="rgba(255,255,255,.08)";box()}
+  const g2=c.createLinearGradient(0,bot,0,-.3*w);g2.addColorStop(0,"rgba(0,0,0,.26)");g2.addColorStop(1,"rgba(0,0,0,0)");c.fillStyle=g2;c.fillRect(-h-2,-.3*w,w+4,bot+.3*w+2);
+  if(flat3d)return;
   /* Wölbung */
   const g=c.createLinearGradient(-h,0,h,0);g.addColorStop(0,"rgba(0,0,0,.34)");g.addColorStop(.26,"rgba(0,0,0,0)");g.addColorStop(.5,"rgba(255,255,255,.05)");g.addColorStop(.74,"rgba(0,0,0,0)");g.addColorStop(1,"rgba(0,0,0,.34)");c.fillStyle=g;box();
-  const g2=c.createLinearGradient(0,bot,0,-.3*w);g2.addColorStop(0,"rgba(0,0,0,.26)");g2.addColorStop(1,"rgba(0,0,0,0)");c.fillStyle=g2;c.fillRect(-h-2,-.3*w,w+4,bot+.3*w+2);
   /* Lichtreflex */
   if(d.finish==="matte"){soft(c,-.14*w,-L*.52,.2*w,L*.36,0,"#FFFFFF",.12)}
   else{const a=d.finish==="jelly"?.8:d.finish==="chrome"?.5:.62;soft(c,-.2*w,-(L*.5+.1*w),.085*w,L*.34,.03,"#FFFFFF",a);soft(c,.2*w,-.2*w,.07*w,.05*w,-.5,"#FFFFFF",a*.6)}
 }
+/* Räumlich gekippter Nagel. Die Nagelfläche ist ein Stück Zylindermantel (die C-Kurve eines Nagels). Sie wird flach
+   gemalt, in schmale Längsstreifen zerlegt und so zusammengesetzt, wie man die Fläche nach dem Kippen sieht:
+   n.r = seitlich kippen (Grad, um die Längsachse), n.p = nach vorn/hinten kippen (Grad, um die Querachse).
+   Licht und Glanz ergeben sich aus der Lage jedes Streifens. */
+const PHI0=50*Math.PI/180,tiltCache=new Map();
+function tiltedCanvas(n,d,idx,k,seed,shade){
+  const w=n.w,L=w*d.len*(n.f||1),h=w/2,R=h/Math.sin(PHI0),rho=(n.r||0)*Math.PI/180,tau=(n.p||0)*Math.PI/180;
+  const res=Math.max(.25,Math.round(Math.min(k,900/(L+2*w))*6)/6);
+  const key=[idx,seed,shade,d.shape,d.len,d.color,d.color2,d.pattern,d.finish,w.toFixed(1),L.toFixed(1),n.r||0,n.p||0,res.toFixed(3),n.c?n.c.join(","):""].join("|");
+  const hit=tiltCache.get(key);if(hit)return hit;if(tiltCache.size>60)tiltCache.clear();
+  /* 1. flache Nagelfläche */
+  const m=3/res,A=mkCanvas(Math.ceil((w+2*m)*res),Math.ceil((L+2*m)*res)),a=A.getContext("2d");
+  a.setTransform(res,0,0,res,(m+h)*res,(m+L)*res);a.save();a.clip(nailPath(w,L,d.shape,n.c));
+  if(d.finish==="jelly")a.globalAlpha=.62;paintPattern(a,w,L,d,mulberry(seed*131+idx*977+7));a.globalAlpha=1;
+  paintFinish(a,w,L,d,mulberry(seed*57+idx*311+3),true);
+  if(shade>0){a.fillStyle="rgba(10,4,8,"+shade+")";a.fillRect(-w,-L-2,w*2,L+w)}a.restore();
+  /* 2. Streifen auf die gekippte Fläche legen */
+  const zm=.3*w,B=mkCanvas(Math.ceil((2*R+2*m)*res),Math.ceil((L+2*zm+2*m)*res)),b=B.getContext("2d"),ox=m+R,oy=m+zm+L,ct=Math.cos(tau),st=Math.sin(tau),NSTR=32,c0=R*Math.cos(PHI0);
+  const ang=j=>-PHI0+2*PHI0*j/NSTR,bx=[];for(let j=0;j<=NSTR;j++)bx.push(Math.round((ox+R*Math.sin(clamp(ang(j)+rho,-Math.PI/2,Math.PI/2))-c0*Math.sin(rho))*res));
+  const strips=[];b.imageSmoothingQuality="high";
+  for(let j=0;j<NSTR;j++){const pa=ang(j),pb=ang(j+1),pm=(pa+pb)/2;if(Math.cos(pm+rho)<=.03||bx[j+1]<=bx[j])continue;
+    const zc=R*Math.cos(pm+rho)-c0*Math.cos(rho),sx=(m+h+h*pa/PHI0)*res,sw=h*(pb-pa)/PHI0*res,dy=(oy+(-L-m)*ct-zc*st)*res,dh=(L+2*m)*ct*res;
+    b.drawImage(A,sx,0,sw,A.height,bx[j],dy,bx[j+1]-bx[j],dh);strips.push([bx[j],bx[j+1]-bx[j],dy,dh,pm+rho])}
+  /* 3. Licht: dunkler, wo die Fläche vom Licht wegzeigt; Glanzstreifen, wo sie das Licht zum Betrachter spiegelt */
+  b.globalCompositeOperation="source-atop";const matte=d.finish==="matte",ga=matte?.14:d.finish==="jelly"?.85:d.finish==="chrome"?.55:.72;
+  strips.forEach(s=>{const nx=Math.sin(s[4]),ny=-Math.cos(s[4])*st,nz=Math.cos(s[4])*ct,I=Math.max(0,-.18*nx-.25*ny+.951*nz),dark=clamp((1-I)*.85-.1,0,.66);
+    if(dark>.01){b.fillStyle="rgba(12,4,9,"+dark.toFixed(3)+")";b.fillRect(s[0],s[2],s[1],s[3])}
+    const sp=Math.pow(Math.max(0,-.33*nx-.06*ny+.942*nz),matte?6:70)*ga;
+    if(sp>.012){const y0=s[2]+s[3]*.1,y1=s[2]+s[3]*.86,g=b.createLinearGradient(0,y0,0,y1),col="rgba(255,255,255,"+sp.toFixed(3)+")";
+      g.addColorStop(0,"rgba(255,255,255,0)");g.addColorStop(.3,col);g.addColorStop(.7,col);g.addColorStop(1,"rgba(255,255,255,0)");b.fillStyle=g;b.fillRect(s[0],y0,s[1],y1-y0)}});
+  /* feines Korn, damit die Fläche nicht glatter wirkt als das Foto */
+  b.globalAlpha=.06;b.fillStyle=b.createPattern(grain(),"repeat");b.fillRect(0,0,B.width,B.height);b.globalAlpha=1;
+  const out={B:B,res:res,ox:ox,oy:oy,key:key,wf:w*(n.f||1)};tiltCache.set(key,out);return out}
+let grainC=null;
+function grain(){if(grainC)return grainC;grainC=mkCanvas(96,96);const x=grainC.getContext("2d"),im=x.createImageData(96,96),R=mulberry(99);
+  for(let i=0;i<im.data.length;i+=4){const v=R()<.5?0:255;im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=Math.round(R()*255)}x.putImageData(im,0,0);return grainC}
+/* Licht aus dem Foto übernehmen: Unter dem Kunstnagel liegt der echte Nagel mit seinem echten Licht (helle und dunkle
+   Seite, Schatten im Raum). Dessen weich gezeichnete Helligkeit wird auf den Kunstnagel übertragen, und seine
+   Grundhelligkeit an die Belichtung des Fotos angepasst. So wirkt er nicht aufgeklebt. */
+let LIGHT=null;const litCache=new Map();
+function litCanvas(t,n){
+  const key=t.key+"|"+n.x.toFixed(1)+"|"+n.y.toFixed(1)+"|"+n.a.toFixed(3);const hit=litCache.get(key);if(hit&&hit.src===LIGHT)return hit.c;if(litCache.size>24)litCache.clear();
+  const W=t.B.width,H=t.B.height,ds=Math.max(2,Math.round(.09*n.w*t.res)),S=mkCanvas(Math.ceil(W/ds),Math.ceil(H/ds)),sx=S.getContext("2d");
+  sx.imageSmoothingQuality="high";sx.scale(t.res/ds,t.res/ds);sx.translate(t.ox,t.oy);sx.rotate(-n.a);sx.translate(-n.x,-n.y);sx.drawImage(LIGHT,0,0);
+  const T=mkCanvas(W,H),tx=T.getContext("2d",{willReadFrequently:true});tx.imageSmoothingQuality="high";tx.drawImage(S,0,0,W,H);
+  let pd,bd;try{pd=tx.getImageData(0,0,W,H).data;tx.clearRect(0,0,W,H);tx.drawImage(t.B,0,0);bd=tx.getImageData(0,0,W,H)}catch(e){return t.B}
+  const d=bd.data,lum=i=>.299*pd[i]+.587*pd[i+1]+.114*pd[i+2],base=.8*t.wf;let sum=0,cnt=0;
+  for(let y=0;y<H;y+=2){const yl=t.oy-y/t.res;if(yl<0||yl>base)continue;for(let x=0;x<W;x+=2){const i=(y*W+x)*4;if(d[i+3]>128){sum+=lum(i);cnt++}}}
+  if(cnt<20)return t.B;const ref=Math.max(20,sum/cnt),ex=clamp(Math.pow(ref/150,.5),.7,1.1);
+  for(let y=0;y<H;y++){const yl=t.oy-y/t.res,wy=yl<=base?1:clamp(1-(yl-base)/(.3*t.wf),0,1);
+    for(let x=0;x<W;x++){const i=(y*W+x)*4;if(!d[i+3])continue;const m=ex*(1+.65*wy*(clamp(lum(i)/ref,.55,1.6)-1));d[i]=Math.min(255,d[i]*m);d[i+1]=Math.min(255,d[i+1]*m);d[i+2]=Math.min(255,d[i+2]*m)}}
+  tx.putImageData(bd,0,0);litCache.set(key,{c:T,src:LIGHT});return T}
+function drawTilted(c,n,d,idx,k,seed,shade){
+  const t=tiltedCanvas(n,d,idx,k,seed,shade),w=t.B.width/t.res,h=t.B.height/t.res,img=LIGHT?litCanvas(t,n):t.B;
+  c.save();c.translate(n.x,n.y);c.rotate(n.a);c.imageSmoothingQuality="high";
+  /* enger Kontaktschatten statt eines schwebenden Schlagschattens */
+  c.shadowColor="rgba(25,8,14,"+(d.finish==="jelly"?.2:.34)+")";c.shadowBlur=n.w*k*.07;c.shadowOffsetY=n.w*k*.02;c.drawImage(img,-t.ox,-t.oy,w,h);
+  if(d.finish!=="jelly"){c.shadowColor="rgba(20,6,12,.45)";c.shadowBlur=Math.max(1,.018*n.w*k);c.shadowOffsetY=0;c.drawImage(img,-t.ox,-t.oy,w,h)}
+  c.restore()}
 /* k = Ausgabe-Pixel pro Bild-Pixel (für Schatten und Linien) */
 function drawNail(c,n,d,idx,k,seed,shade){
-  const w=n.w,L=w*d.len*(n.f||1),path=nailPath(w,L,d.shape);
+  if(n.r!==undefined)return drawTilted(c,n,d,idx,k,seed,shade);
+  const w=n.w,L=w*d.len*(n.f||1),path=nailPath(w,L,d.shape,n.c);
   c.save();c.translate(n.x,n.y);c.rotate(n.a);
   c.save();c.shadowColor="rgba(25,8,14,"+(d.finish==="jelly"?.22:.42)+")";c.shadowBlur=w*k*.13;c.shadowOffsetY=w*k*.035;c.globalAlpha=d.finish==="jelly"?.35:1;c.fillStyle=d.color;c.fill(path);c.restore();
   c.save();c.clip(path);
@@ -502,7 +568,7 @@ function demoHand(){
   c.globalAlpha=.3;c.strokeStyle=edge;c.lineWidth=4;fingers.forEach(f=>{const dx=f[1][0]-f[0][0],dy=f[1][1]-f[0][1],l=Math.hypot(dx,dy),nx=-dy/l,ny=dx/l;[.36,.66].forEach(t=>{const x=f[0][0]+dx*t,y=f[0][1]+dy*t;for(let j=-1;j<=1;j++){c.beginPath();c.moveTo(x-nx*f[2]*.3+dx/l*j*9,y-ny*f[2]*.3+dy/l*j*9);c.quadraticCurveTo(x+dx/l*(j*9-5),y+dy/l*(j*9-5),x+nx*f[2]*.3+dx/l*j*9,y+ny*f[2]*.3+dy/l*j*9);c.stroke()}})});
   c.globalAlpha=1;
   S.nails=fingers.map(f=>{const dx=f[1][0]-f[0][0],dy=f[1][1]-f[0][1],l=Math.hypot(dx,dy),vx=dx/l,vy=dy/l,w=f[2]*.74,ex=f[1][0]+vx*f[2]*.5,ey=f[1][1]+vy*f[2]*.5;
-    return{x:ex-vx*w*1.0,y:ey-vy*w*1.0,a:Math.atan2(vx,-vy),w:w,f:1,on:true}});
+    return{x:ex-vx*w*1.0,y:ey-vy*w*1.0,a:Math.atan2(vx,-vy),w:w,f:1,r:0,p:0,on:true}});
   S.nails.forEach((n,i)=>drawNail(c,n,D("round",1.02,"#EBC4B4","#FBFAF8","uni","matte"),i,1,1,0));
   S.demo=true;updateBackdrop();
 }
@@ -525,11 +591,11 @@ function handles(i){const n=S.nails[i],L=nailLen(i),ca=Math.cos(n.a),sa=Math.sin
 function paint(){
   const k=view.s*dpr;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);
   ctx.setTransform(k,0,0,k,view.tx*dpr,view.ty*dpr);ctx.imageSmoothingQuality="high";ctx.drawImage(photo,0,0);
-  if(!S.before&&!S.busy){if(DEBUG)ctx.globalAlpha=.4;S.nails.forEach((n,i)=>{if(n.on)drawNail(ctx,n,eff(i),i,k,S.seed,S.shade)});ctx.globalAlpha=1;
+  if(!S.before&&!S.busy){if(DEBUG)ctx.globalAlpha=.4;LIGHT=photo;S.nails.forEach((n,i)=>{if(n.on)drawNail(ctx,n,eff(i),i,k,S.seed,S.shade)});LIGHT=null;ctx.globalAlpha=1;
     if(DEBUG)dbg.forEach(p=>{ctx.fillStyle=p[2];ctx.beginPath();ctx.arc(p[0],p[1],3/view.s,0,7);ctx.fill()});
     const pos=S.tab==="pos";
-    S.nails.forEach((n,i)=>{if(!n.on)return;const sel=i===S.target;if(!sel&&!pos)return;const p=nailPath(n.w,nailLen(i),eff(i).shape);
-      ctx.save();ctx.translate(n.x,n.y);ctx.rotate(n.a);ctx.lineWidth=(sel?3:2)/view.s;ctx.strokeStyle="rgba(20,10,18,.55)";ctx.stroke(p);
+    S.nails.forEach((n,i)=>{if(!n.on)return;const sel=i===S.target;if(!sel&&!pos)return;const p=nailPath(n.w,nailLen(i),eff(i).shape,n.c);
+      ctx.save();ctx.translate(n.x,n.y);ctx.rotate(n.a);ctx.scale(.15+.85*Math.cos((n.r||0)*Math.PI/180),Math.cos((n.p||0)*Math.PI/180));ctx.lineWidth=(sel?3:2)/view.s;ctx.strokeStyle="rgba(20,10,18,.55)";ctx.stroke(p);
       ctx.lineWidth=(sel?1.6:1)/view.s;ctx.setLineDash(sel?[]:[5/view.s,4/view.s]);ctx.strokeStyle="#FFFFFF";ctx.stroke(p);ctx.restore()});
     if(pos&&S.target>=0&&S.nails[S.target].on){const n=S.nails[S.target],hd=handles(S.target),r=11/view.s;
       ctx.lineWidth=1.5/view.s;ctx.strokeStyle="rgba(255,255,255,.85)";ctx.beginPath();ctx.moveTo(n.x,n.y);ctx.lineTo(hd.rot.x,hd.rot.y);ctx.stroke();
@@ -661,18 +727,20 @@ function build(){
   s.appendChild(el("p","hint","Ist dein Foto eher dunkel, wirken die Nägel so weniger aufgeklebt."));panes.finish.appendChild(s);panes.finish._shade=sf;
 
   /* Position */
-  s=section("Nägel ausrichten");s.appendChild(el("p","hint","Die App erkennt deine Hand im Foto und passt Position, Drehung, Breite und Länge jedes Nagels an deine Finger an. Sitzt einer nicht ganz, zieh ihn im Foto zurecht. Der Griff an der Spitze dreht ihn, der Griff an der Seite macht ihn breiter oder schmaler. Mit zwei Fingern oder den Tasten + und − zoomst du ins Foto."));
+  s=section("Nägel ausrichten");s.appendChild(el("p","hint","Die App erkennt deine Hand im Foto und passt Position, Drehung, Breite und Länge jedes Nagels an deine Finger an. Sitzt einer nicht ganz, zieh ihn im Foto zurecht. Der Griff an der Spitze dreht ihn, der Griff an der Seite macht ihn breiter oder schmaler. Mit den Reglern darunter kippst du ihn räumlich: seitlich sowie nach vorn oder hinten. Mit zwei Fingern oder den Tasten + und − zoomst du ins Foto."));
   s.appendChild(el("p","hint","Foto-Tipp: Handrücken zur Kamera, Finger leicht gespreizt, helles Licht und die ganze Hand im Bild."));
   const rb=el("div","rowbtns"),auto=sbtn("Nägel automatisch anpassen",()=>autoPlace(true).then(ok=>{if(ok){S.tab="pos";syncAll();draw()}}));auto.id="autoBtn";auto.hidden=true;rb.appendChild(auto);rb.appendChild(sbtn("Zurück auf Anfang",()=>{commit();defaultNails();refresh()}));s.appendChild(rb);panes.pos.appendChild(s);panes.pos._auto=auto;
   s=section("Feinjustieren");const nm=el("p","hint");nm.id="posName";s.appendChild(nm);
   const N=()=>S.nails[Math.max(0,S.target)];
   const f1=range("posW","Breite",8,640,1,v=>Math.round(v)+" px",()=>N().w,v=>{N().w=v;draw()}),
         f2=range("posA","Drehung",-180,180,1,v=>Math.round(v)+"°",()=>Math.round(N().a*180/Math.PI),v=>{N().a=v*Math.PI/180;draw()}),
+        fr=range("posR","Seitlich kippen",-80,80,1,v=>Math.round(v)+"°",()=>N().r||0,v=>{N().r=v;draw()}),
+        fp=range("posP","Nach vorn oder hinten kippen",-60,60,1,v=>Math.round(v)+"°",()=>N().p||0,v=>{N().p=v;draw()}),
         f3=range("posF","Länge anpassen",.5,2,.01,v=>Math.round(v*100)+" %",()=>N().f||1,v=>{N().f=v;draw()}),
         f4=range("posAll","Alle Nägel grösser oder kleiner",.5,2,.01,v=>Math.round(v*100)+" %",()=>1,v=>{const k=v/(f4._last||1);f4._last=v;S.nails.forEach(n=>n.w=clamp(n.w*k,8,PW*.4));draw()});
   f4.querySelector("input").addEventListener("change",()=>{f4._last=1;f4.sync();syncPos()});
   const ck=el("label","check"),cb=el("input");cb.type="checkbox";cb.id="posOn";cb.onchange=()=>{commit();N().on=cb.checked;refresh()};ck.appendChild(cb);ck.appendChild(document.createTextNode("Diesen Nagel anzeigen"));
-  [f1,f2,f3,ck,f4].forEach(x=>s.appendChild(x));panes.pos.appendChild(s);panes.pos._f=[f1,f2,f3,f4];panes.pos._cb=cb;panes.pos._nm=nm;
+  [f1,f2,fr,fp,f3,ck,f4].forEach(x=>s.appendChild(x));panes.pos.appendChild(s);panes.pos._f=[f1,f2,fr,fp,f3,f4];panes.pos._cb=cb;panes.pos._nm=nm;
   buildLooks();
 }
 function buildLooks(){const p=panes.looks;p.textContent="";
@@ -713,7 +781,7 @@ function refresh(){syncAll();draw();persist()}
 
 /* ---------- Foto laden ---------- */
 function defaultNails(){const m=Math.min(PW,PH),cx=PW/2,cy=PH/2,w=m*.07;
-  S.nails=[[-.3,.12,-.62,1.15],[-.14,-.2,-.14,1],[0,-.27,0,1.04],[.14,-.22,.12,.98],[.26,-.1,.28,.84]].map(p=>({x:cx+p[0]*m,y:cy+p[1]*m,a:p[2],w:w*p[3],f:1,on:true}))}
+  S.nails=[[-.3,.12,-.62,1.15],[-.14,-.2,-.14,1],[0,-.27,0,1.04],[.14,-.22,.12,.98],[.26,-.1,.28,.84]].map(p=>({x:cx+p[0]*m,y:cy+p[1]*m,a:p[2],w:w*p[3],f:1,r:0,p:0,on:true}))}
 function toast(msg,ms){const t=$("toast");t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,ms||3600)}
 async function decode(file){if(window.createImageBitmap){try{return await createImageBitmap(file,{imageOrientation:"from-image"})}catch(e){}}
   return await new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);res(im)};im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error("decode"))};im.src=u})}
@@ -800,40 +868,44 @@ function nailFromImage(data,d,t,i,hx,hy){
   const fw=med(ws)*(ax*vx+ay*vy);if(!(fw>6))return null;
   const nx=-ay,ny=ax,tp=(t.x-mx)*ax+(t.y-my)*ay,ox=mx+ax*tp,oy=my+ay*tp,G=fw/NS;
   /* 2. genormtes Raster der Fingerkuppe (u quer, v längs zur Spitze; Ursprung = Fingerspitzen-Marke auf der Achse) */
-  const CU=Math.floor(.85*NS),CV=Math.floor(1.45*NS),cols=2*CU+1,rows=CV+NS+1,FP=new Float32Array(rows*cols*3),q=G/3;
+  const CU=Math.floor((i===0?1.35:.85)*NS),CV=Math.floor(1.45*NS),cols=2*CU+1,rows=CV+NS+1,FP=new Float32Array(rows*cols*3),q=G/3;
   for(let j=0;j<rows;j++)for(let c=0;c<cols;c++){const u=(c-CU)*G,v=(j-CV)*G,x=ox+u*nx+v*ax,y=oy+u*ny+v*ay;let r=0,g=0,b=0;
     for(let a=-1;a<=1;a++)for(let e=-1;e<=1;e++){const xx=Math.min(W-1,Math.max(0,Math.round(x+(a*nx+e*ax)*q))),yy=Math.min(H-1,Math.max(0,Math.round(y+(a*ny+e*ay)*q))),o=(yy*W+xx)*4;r+=data[o];g+=data[o+1];b+=data[o+2]}
     r/=9;g/=9;b/=9;const Y=.299*r+.587*g+.114*b,o=(j*cols+c)*3;FP[o]=.55*Y;FP[o+1]=1.25*(b-Y);FP[o+2]=1.25*(r-Y)}
   const px=(j,c)=>(Math.min(rows-1,Math.max(0,j))*cols+Math.min(cols-1,Math.max(0,c)))*3;
-  /* 3. Hautfarbe (hinter dem Nagel), Hintergrundfarben (neben und über der Kuppe, zwei Gruppen: z.B. Tisch und Schlagschatten) */
+  /* 3. Hautfarbe: Mittelwert eines Streifens hinter dem Nagel */
   const skin=[0,0,0];let ns=0;for(let j=2;j<Math.floor(.45*NS);j++)for(let c=CU-Math.floor(.22*NS);c<CU+Math.floor(.22*NS);c++){const o=(j*cols+c)*3;skin[0]+=FP[o];skin[1]+=FP[o+1];skin[2]+=FP[o+2];ns++}
   skin[0]/=ns;skin[1]/=ns;skin[2]/=ns;
-  const bs=[],j1=Math.floor(2.05*NS),sw=Math.floor(.22*NS);
-  for(let j=j1;j<rows;j++)for(let c=0;c<cols;c++)if(c<sw||c>=cols-sw||j>=rows-Math.floor(.12*NS))bs.push((j*cols+c)*3);
-  let c0=null,c1=null;bs.forEach(o=>{if(c0==null||FP[o]<FP[c0])c0=o;if(c1==null||FP[o]>FP[c1])c1=o});
-  let cen=[[FP[c0],FP[c0+1],FP[c0+2]],[FP[c1],FP[c1+1],FP[c1+2]]],cnt=[0,0];
-  for(let it=0;it<8;it++){const s=[[0,0,0],[0,0,0]];cnt=[0,0];bs.forEach(o=>{const d0=Math.hypot(FP[o]-cen[0][0],FP[o+1]-cen[0][1],FP[o+2]-cen[0][2]),d1=Math.hypot(FP[o]-cen[1][0],FP[o+1]-cen[1][1],FP[o+2]-cen[1][2]),k=d1<d0?1:0;s[k][0]+=FP[o];s[k][1]+=FP[o+1];s[k][2]+=FP[o+2];cnt[k]++});
-    for(let k=0;k<2;k++)if(cnt[k])cen[k]=[s[k][0]/cnt[k],s[k][1]/cnt[k],s[k][2]/cnt[k]]}
-  const bg=cen.filter((c,k)=>cnt[k]>bs.length*.08);if(!bg.length)return null;
-  const dBg=(a,b,c)=>{let m=1e9;for(const g of bg){const e=Math.hypot(a-g[0],b-g[1],c-g[2]);if(e<m)m=e}return m};
-  /* Fingermaske und pro Zeile linker/rechter Fingerrand */
-  const M=new Uint8Array(rows*cols);for(let k=0;k<rows*cols;k++)M[k]=dBg(FP[k*3],FP[k*3+1],FP[k*3+2])>24?1:0;
-  const Le=new Float32Array(rows).fill(1e9),Ri=new Float32Array(rows).fill(-1e9);
-  for(let j=0;j<rows;j++){const r0=j*cols;let s=CU;if(!M[r0+s]){let f=-1;for(let e=1;e<=Math.floor(.35*NS)&&f<0;e++){if(M[r0+CU-e])f=CU-e;else if(M[r0+CU+e])f=CU+e}if(f<0)continue;s=f}
-    let a=s;while(a>0&&(M[r0+a-1]||(a>2&&(M[r0+a-2]||M[r0+a-3]))))a--;while(a<s&&!M[r0+a])a++;
-    let b=s;while(b<cols-1&&(M[r0+b+1]||(b<cols-3&&(M[r0+b+2]||M[r0+b+3]))))b++;while(b>s&&!M[r0+b])b--;
-    Le[j]=a-CU;Ri[j]=b-CU}
-  const axisAng=Math.atan2(ax,-ay);
-  const out=(x0,y0,w,thDeg,f,sc)=>{const th=thDeg*Math.PI/180,c=Math.cos(th),s=Math.sin(th),dx=c*ax-s*nx,dy=c*ay-s*ny;
-    return{x:ox+x0*G*nx+y0*G*ax,y:oy+x0*G*ny+y0*G*ay,a:Math.atan2(dx,-dy),w:w*G,f:f,score:sc}};
-  /* Fingerende: letzte Zeile ab v0, in der noch Finger ist */
-  const endRow=(v0,x0,wmin)=>{let j0=Math.max(0,Math.min(rows-1,v0+CV)),ev=j0;for(let j=j0;j<rows;j++){if(Ri[j]-Le[j]>=wmin&&Math.abs((Le[j]+Ri[j])/2-x0)<Math.max(wmin*2,.3*NS))ev=j;else if(j-ev>4)break}return ev-CV};
+  /* Fingerränder pro Zeile: von der Mitte nach aussen gehen, solange die Farbe gleich bleibt. Das braucht keine Annahme
+     über den Hintergrund und funktioniert deshalb auch auf bunten Unterlagen. */
+  const Lr=new Float32Array(rows),Rr=new Float32Array(rows);
+  for(let j=0;j<rows;j++){let r0=0,r1=0,r2=0;for(let c=CU-2;c<=CU+2;c++){const o=(j*cols+c)*3;r0+=FP[o];r1+=FP[o+1];r2+=FP[o+2]}r0/=5;r1/=5;r2/=5;
+    const walk=sg=>{let bad=0,e=CU;for(let c=CU+sg;c>=0&&c<cols;c+=sg){const o=(j*cols+c)*3;if(Math.hypot((FP[o]-r0)*.45,FP[o+1]-r1,FP[o+2]-r2)>22){if(++bad>=3)break}else{bad=0;e=c}}return e};
+    Lr[j]=walk(-1)-CU;Rr[j]=walk(1)-CU}
+  const Le=new Float32Array(rows),Ri=new Float32Array(rows);
+  for(let j=0;j<rows;j++){const a=[],b=[];for(let e=-2;e<=2;e++){const q=Math.min(rows-1,Math.max(0,j+e));a.push(Lr[q]);b.push(Rr[q])}Le[j]=med(a);Ri[j]=med(b)}
+  const out=(x0,y0,w,thDeg,f,sc,roll,cv)=>{const th=thDeg*Math.PI/180,c=Math.cos(th),s=Math.sin(th),dx=c*ax-s*nx,dy=c*ay-s*ny;
+    return{x:ox+x0*G*nx+y0*G*ax,y:oy+x0*G*ny+y0*G*ay,a:Math.atan2(dx,-dy),w:w*G,f:f,score:sc,r:roll||0,c:cv||null}};
+  /* Fingerende: von v0 Richtung Spitze, solange in der Mitte noch Haut oder Nagel ist */
+  const endAlong=(v0,x0,hw,nail)=>{let ev=v0;for(let j=v0+CV;j<rows;j++){let a=0,b=0,c=0,n=0;for(let cc=Math.round(x0-hw);cc<=Math.round(x0+hw);cc++){const o=px(j,cc+CU);a+=FP[o];b+=FP[o+1];c+=FP[o+2];n++}a/=n;b/=n;c/=n;
+      const ok=Math.hypot((a-skin[0])*.45,b-skin[1],c-skin[2])<30||(nail&&Math.hypot((a-nail[0])*.6,b-nail[1],c-nail[2])<26);if(ok)ev=j-CV;else if(j-CV-ev>3)break}return ev};
   if(i===0){
-    /* Daumen: liegt die Hand flach, zeigt der Daumennagel zur Seite. Er wird als schmaler Nagel an den Rand gesetzt,
+    /* Daumen: liegt die Hand flach, zeigt der Daumennagel zur Seite. Er wird stark seitlich gekippt an den Rand gesetzt,
        der von den übrigen Fingern weg zeigt. */
-    const jr=CV-Math.round(.45*NS),wl=[],ml=[];for(let j=jr-4;j<=jr+4;j++)if(j>=0&&j<rows&&Ri[j]>Le[j]){wl.push(Ri[j]-Le[j]);ml.push((Le[j]+Ri[j])/2)}
-    if(wl.length<3)return null;const Wl=med(wl),mid=med(ml),sg=(nx*hx+ny*hy)>=0?-1:1,ev=endRow(-Math.round(.45*NS),mid,.25*Wl),w=.46*Wl;
-    return out(mid+sg*.2*Wl,ev-.74*Wl,w,sg*-4,1.45,0)}
+    /* Daumenbreite: über viele Zeilen hinter der Spitze gemessen und die breiten Werte genommen. So zählt der Nagel mit,
+       auch wenn sich seine Farbe in einzelnen Zeilen von der Haut abhebt. */
+    const sg=(nx*hx+ny*hy)>=0?-1:1,ls=[],rs=[];
+    /* Hebt sich der Nagel farblich ab, endet die Hautsuche an seinem Rand. Dann folgt auf der Aussenseite ein zweiter,
+       schmaler und nicht dunkler Streifen (der Nagel, kein Schatten): er zählt zur Daumenbreite dazu. */
+    const extra=j=>{const e=Math.round(sg>0?Rr[j]:Lr[j])+CU,c=e+sg*5;if(c<6||c>=cols-7)return 0;let r0=0,r1=0,r2=0;
+      for(let q=0;q<4;q++){const o=(j*cols+c+sg*q)*3;r0+=FP[o];r1+=FP[o+1];r2+=FP[o+2]}r0/=4;r1/=4;r2/=4;if(r0<.62*skin[0]&&!(r0>=.4*skin[0]&&Math.hypot(r1,r2)>=8))return 0;   /* dunkel und farblos = Schatten */
+      let bad=0,end=c;for(let cc=c;cc>=0&&cc<cols;cc+=sg){const o=(j*cols+cc)*3;if(Math.hypot((FP[o]-r0)*.45,FP[o+1]-r1,FP[o+2]-r2)>20){if(++bad>=3)break}else{bad=0;end=cc}}
+      const nw=Math.abs(end-e)+1;return end>1&&end<cols-2&&nw<=.8*NS?nw:0};
+    for(let j=Math.max(0,CV-NS);j<=CV-Math.round(.1*NS);j++)if(Rr[j]-Lr[j]>.3*NS){const x=extra(j);ls.push(Lr[j]-(sg<0?x:0));rs.push(Rr[j]+(sg>0?x:0))}
+    if(ls.length<8)return null;ls.sort((a,b)=>a-b);rs.sort((a,b)=>a-b);
+    const Lt=ls[Math.floor(ls.length*.25)],Rt=rs[Math.floor(rs.length*.75)],Wl=Rt-Lt,mid=(Lt+Rt)/2;if(!(Wl>.4*NS))return null;
+    const ev=Math.min(endAlong(-Math.round(.45*NS),mid,.12*Wl,null),Math.round(.75*NS)),w=.72*Wl;
+    return out(mid+sg*.26*Wl,ev-.74*Wl,w,sg*-4,.93,0,sg*58)}
   /* 4. Schablone suchen */
   const tcache={};
   const tmpl=(th,wr)=>{const key=th+"_"+wr.toFixed(2);if(tcache[key])return tcache[key];const w=wr*NS,c=Math.cos(th*Math.PI/180),s=Math.sin(th*Math.PI/180),K=Math.floor(.95*NS),g=.04*w,R={in:[],cu:[],le:[],ri:[]};
@@ -848,19 +920,45 @@ function nailFromImage(data,d,t,i,hx,hy){
   const score=(th,wr,x0,y0)=>{const w=wr*NS,jr=y0+CV-Math.round(.10*NS);if(jr<0||jr>=rows||y0<-NS||y0>.15*NS)return-1e9;
     const Lm=Le[jr],Rm=Ri[jr],Wm=Rm-Lm;if(!(Wm>.3*NS)||w>.84*Wm||x0-w/2<Lm+.05*Wm||x0+w/2>Rm-.05*Wm)return-1e9;
     const T=tmpl(th,wr);if(!T.in.length||!T.cu.length||!T.le.length||!T.ri.length)return-1e9;
-    const mi=mean(T.in,x0,y0,true),mc=mean(T.cu,x0,y0),ml=mean(T.le,x0,y0),mr=mean(T.ri,x0,y0);
+    const mi=mean(T.in,x0,y0,true),mc=mean(T.cu,x0,y0),ml=mean(T.le,x0,y0),mr=mean(T.ri,x0,y0),gl=gs(ml),gr=gs(mr);
     const sd=Math.sqrt(Math.max(0,mi[3]-mi[0]*mi[0]-mi[1]*mi[1]-mi[2]*mi[2]));
-    let sc=Math.min(D3(mi,mc),60)*gs(mc)+.5*Math.min(D3(mi,ml),60)*gs(ml)+.5*Math.min(D3(mi,mr),60)*gs(mr)-.3*sd-.5*Math.abs(th);
-    sc*=(1-Math.exp(-Math.pow(dBg(mi[0],mi[1],mi[2])/26,2)))*(.55+.45*Math.exp(-.5*Math.pow((y0/NS+.4)/.3,2)-.5*Math.pow((x0/NS)/.16,2)));
+    let sc=Math.min(D3(mi,mc),60)*gs(mc)+.5*Math.min(D3(mi,ml),60)*gl+.5*Math.min(D3(mi,mr),60)*gr-.3*sd-.5*Math.abs(th);
+    /* die Bänder links und rechts müssen auf Haut liegen: sonst sitzt die Schablone nicht auf dem Finger */
+    sc*=(.25+.75*Math.min(gl,gr))*(.55+.45*Math.exp(-.5*Math.pow((y0/NS+.4)/.3,2)-.5*Math.pow((x0/NS)/.16,2)));
     return sc-14*Math.abs(w/Wm-.72)};
   let best=[-1e9,0,0,0,0];
   for(let wr=.5;wr<.93;wr+=.04)for(let y0=-NS;y0<=Math.floor(.15*NS);y0+=2)for(let x0=-14;x0<=14;x0+=2){const s=score(0,wr,x0,y0);if(s>best[0])best=[s,0,wr,x0,y0]}
   if(best[0]<-1e8)return null;
   const b0=best.slice();
   for(const th of [-6,-3,0,3,6])for(let wr=b0[2]-.04;wr<=b0[2]+.041;wr+=.02)for(let y0=b0[4]-2;y0<=b0[4]+2;y0++)for(let x0=b0[3]-2;x0<=b0[3]+2;x0++){const s=score(th,wr,x0,y0);if(s>best[0])best=[s,th,wr,x0,y0]}
-  if(best[0]<12)return null;
-  const w=best[2]*NS,dE=endRow(best[4],best[3],.25*w)-best[4],wa=w*1.08;
-  return out(best[3],best[4]-.03*w,wa,best[1],clamp(dE/wa,.6,1.35),best[0])}
+  if(best[0]<10)return null;
+  /* 5. Kontur nachmessen: an den stärksten Farbkanten entlang der Schablone die echten Ränder des Nagels suchen */
+  const tr=best[1]*Math.PI/180,cs=Math.cos(tr),sn=Math.sin(tr),X0=best[3],Y0=best[4];let w=best[2]*NS,cU=0;
+  const smp=(U,V)=>px(Math.round(Y0+CV+U*sn+V*cs),Math.round(X0+CU+U*cs-V*sn));
+  const grad=(U,V,dU,dV)=>{let g=0;for(const e of [-1,0,1]){const o1=smp(U+dU+e*dV/1.5,V+dV+e*dU/1.5),o2=smp(U-dU+e*dV/1.5,V-dV+e*dU/1.5);g+=Math.hypot(FP[o1]-FP[o2],FP[o1+1]-FP[o2+1],FP[o1+2]-FP[o2+2])}return g/3};
+  const eL=[],eR=[];
+  for(let V=.26*w;V<=.6*w;V+=.06*w){let bl=null,gl=9,br=null,gr=9;
+    for(let e=-.14*w;e<=.14*w;e+=.5){const a=grad(-w/2+e,V,1.5,0)*(1-.4*Math.abs(e)/(.14*w)),b=grad(w/2+e,V,1.5,0)*(1-.4*Math.abs(e)/(.14*w));if(a>gl){gl=a;bl=-w/2+e}if(b>gr){gr=b;br=w/2+e}}
+    if(bl!=null)eL.push(bl);if(br!=null)eR.push(br)}
+  if(eL.length>=3&&eR.length>=3){const l=med(eL),r=med(eR);if(r-l>.75*w&&r-l<1.25*w){cU=(l+r)/2;w=r-l}}
+  const mi=mean(tmpl(best[1],best[2]).in,X0,Y0),wa=w*1.06,pts=[];
+  for(let k=-4;k<=4;k++){const U=cU+k/4*.42*w,Vt=.26*w*Math.pow(2*(U-cU)/w,2);let bv=null,bg=9;
+    for(let e=-.16*w;e<=.16*w;e+=.5){const g=grad(U,Vt+e,0,1.5)*(1-.4*Math.abs(e)/(.16*w));if(g>bg){bg=g;bv=Vt+e}}
+    if(bv!=null)pts.push([U-cU,bv])}
+  /* Parabel (mit Schräglage) durch die gemessenen Nagelhaut-Punkte; Ausreisser werden verworfen */
+  const fitQ=P=>{let s0=0,s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;P.forEach(q=>{const x=q[0],y=q[1],x2=x*x;s0++;s1+=x;s2+=x2;s3+=x2*x;s4+=x2*x2;t0+=y;t1+=x*y;t2+=x2*y});
+    const det=s0*(s2*s4-s3*s3)-s1*(s1*s4-s3*s2)+s2*(s1*s3-s2*s2);if(Math.abs(det)<1e-9)return null;
+    return[(t0*(s2*s4-s3*s3)-s1*(t1*s4-s3*t2)+s2*(t1*s3-s2*t2))/det,(s0*(t1*s4-t2*s3)-t0*(s1*s4-s3*s2)+s2*(s1*t2-s2*t1))/det,(s0*(s2*t2-s3*t1)-s1*(s1*t2-s2*t1)+t0*(s1*s3-s2*s2))/det]};
+  let qc=[0,0,.26*4/w],okc=false;
+  if(pts.length>=6){let f=fitQ(pts);if(f){const keep=pts.filter(p=>Math.abs(f[0]+f[1]*p[0]+f[2]*p[0]*p[0]-p[1])<.07*w);if(keep.length>=6){const f2=fitQ(keep);if(f2)f=f2}
+      const dep=f[2]*w*w/4;if(dep>.06*w&&dep<.5*w&&Math.abs(f[1])<.2&&Math.abs(f[0])<.14*w){qc=f;okc=true}}}
+  /* qc[0] = Versatz der Nagelhaut-Mitte gegenüber der Schablone; Kurve über die ganze Nagelbreite abtasten */
+  const cv=[];for(let k=0;k<9;k++){const x=(k-4)/8*wa;cv.push(Math.round((qc[1]*x+qc[2]*x*x)/wa*1000)/1000)}
+  const Vb=okc?qc[0]:0,bx=X0+cU*cs-Vb*sn,by=Y0+cU*sn+Vb*cs;
+  /* Länge bis zur Fingerkuppe, seitliche Kippung aus dem Versatz gegenüber der Fingermitte */
+  const dE=endAlong(Math.round(by),bx,.12*w,mi)-by,jq=Math.max(0,Math.min(rows-1,Math.round(by)+CV-Math.round(.10*NS))),Wq=Ri[jq]-Le[jq],
+        roll=Wq>0?Math.asin(clamp((bx-(Le[jq]+Ri[jq])/2)/(.5*Wq),-.6,.6))*180/Math.PI*.9:0,wf=wa/Math.cos(roll*Math.PI/180);
+  return out(bx,by-.02*w,wf,best[1],clamp(dE/wf,.6,1.35),best[0],roll,cv)}
 function fitNails(lm,world){
   let data=null;try{data=photo.getContext("2d",{willReadFrequently:true}).getImageData(0,0,PW,PH).data}catch(e){}
   const P=i=>({x:lm[i].x*PW,y:lm[i].y*PH});
@@ -870,11 +968,11 @@ function fitNails(lm,world){
     const d=P(f[1]),t=P(f[2]);let r=null;if(data){try{r=nailFromImage(data,d,t,i,hx,hy)}catch(e){r=null}}
     if(r&&i>0)measured++;
     if(!r){/* Rückfall ohne Bildmessung: Lage aus den Handpunkten schätzen */
-      let vx=t.x-d.x,vy=t.y-d.y;const l=Math.hypot(vx,vy)||1;vx/=l;vy/=l;const w=.76*l;r={x:t.x-vx*.36*l,y:t.y-vy*.36*l,a:Math.atan2(vx,-vy),w:w,f:1}}
+      let vx=t.x-d.x,vy=t.y-d.y;const l=Math.hypot(vx,vy)||1;vx/=l;vy/=l;const w=.76*l;r={x:t.x-vx*.36*l,y:t.y-vy*.36*l,a:Math.atan2(vx,-vy),w:w,f:1,r:0}}
     let on=true;if(i===0){if(inPoly(P(4),palm))on=false}else if(dist(f[2],0)<dist(f[0],0))on=false;
     if(!on)hidden++;
     if(DEBUG)f.forEach(j=>dbg.push([lm[j].x*PW,lm[j].y*PH,"#FF3D81"]));
-    return{x:r.x,y:r.y,a:r.a,w:clamp(r.w,8,PW*.4),f:Math.round(r.f*100)/100,on:on}});
+    return{x:r.x,y:r.y,a:r.a,w:clamp(r.w,8,PW*.4),f:Math.round(r.f*100)/100,r:Math.round(r.r||0),p:0,c:r.c||null,on:on}});
   return{nails:nails,measured:measured,hidden:hidden}}
 function zoomToHand(lm){let x0=1,y0=1,x1=0,y1=0;lm.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
   const pad=.25,bw=Math.max(.05,(x1-x0)*(1+2*pad))*PW,bh=Math.max(.05,(y1-y0)*(1+2*pad))*PH,bb=base(),s0=bb.s0;
@@ -894,7 +992,7 @@ async function autoPlace(manual){
   toast("Nägel an deine Finger angepasst"+(fitd.hidden?" – "+fitd.hidden+(fitd.hidden===1?" verdeckter Nagel":" verdeckte Nägel")+" ausgeblendet":"")+".",4500);return true}
 
 /* ---------- Bild sichern ---------- */
-function exportBlob(){const c=mkCanvas(PW,PH),x=c.getContext("2d");x.drawImage(photo,0,0);S.nails.forEach((n,i)=>{if(n.on)drawNail(x,n,eff(i),i,1,S.seed,S.shade)});
+function exportBlob(){const c=mkCanvas(PW,PH),x=c.getContext("2d");x.drawImage(photo,0,0);LIGHT=photo;S.nails.forEach((n,i)=>{if(n.on)drawNail(x,n,eff(i),i,1,S.seed,S.shade)});LIGHT=null;
   return new Promise(res=>c.toBlob(b=>res(b),"image/png"))}
 function showSheet(blob){const img=$("sheetImg");if(img.dataset.u)URL.revokeObjectURL(img.dataset.u);const u=URL.createObjectURL(blob);img.dataset.u=u;img.src=u;$("sheet").hidden=false;$("sheetClose").focus()}
 $("sheetClose").onclick=()=>{$("sheet").hidden=true};$("sheet").addEventListener("click",e=>{if(e.target===$("sheet"))$("sheet").hidden=true});
