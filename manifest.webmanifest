@@ -1,0 +1,37 @@
+{
+  "name": "Jessy's Nail Studio",
+  "short_name": "Jessy's Nails",
+  "description": "Foto deiner Hand aufnehmen und Gelnägel live darauf gestalten.",
+  "lang": "de",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#150B12",
+  "theme_color": "#150B12",
+  "categories": [
+    "lifestyle",
+    "beauty"
+  ],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
