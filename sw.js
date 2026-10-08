@@ -1,5 +1,5 @@
 /* Jessy's Nail Studio – Service Worker: macht die App installierbar und offline nutzbar. */
-const SHELL = "jns-shell-v5";   // bei einer neuen Version hochzählen (v2, v3, …)
+const SHELL = "jns-shell-v6";   // bei einer neuen Version hochzählen (v2, v3, …)
 const LIBS = "jns-libs-v1";     // Hand-Erkennung (ändert sich nicht)
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png"];
 
