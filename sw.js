@@ -1,11 +1,11 @@
 /* Jessy's Nail Studio – Service Worker: macht die App installierbar und offline nutzbar. */
-const SHELL = "jns-shell-v1";   // bei einer neuen Version hochzählen (v2, v3, …)
+const SHELL = "jns-shell-v2";   // bei einer neuen Version hochzählen (v2, v3, …)
 const LIBS = "jns-libs-v1";     // Hand-Erkennung (ändert sich nicht)
-const FILES = ["./", "index.html", "manifest.webmanifest", "fonts/allura.woff2", "fonts/outfit.woff2",
-  "icons/logo.webp", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png"];
+const FILES = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(SHELL).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // jede Datei einzeln: fehlt eine, funktioniert der Rest trotzdem
+  e.waitUntil(caches.open(SHELL).then(c => Promise.all(FILES.map(f => c.add(f).catch(() => null)))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys()
